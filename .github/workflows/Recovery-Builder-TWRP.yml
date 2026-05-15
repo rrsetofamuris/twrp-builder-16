@@ -13,19 +13,19 @@ on:
       DEVICE_TREE:
         description: 'Custom Recovery Tree' # Your already made Device Tree for TWRP
         required: true
-        default: 'https://github.com/A34-PeaceZone/android_device_samsung_a34x'
+        default: 'https://github.com/rsuplaygrnd/android_recovery_samsung_a05m.git'
       DEVICE_TREE_BRANCH:
         description: 'Custom Recovery Tree Branch' # Your Device Tree Branch, make sure it's right.
         required: true
-        default: 'android-16'
+        default: 'twrp-16.0'
       DEVICE_PATH:
         description: 'Specify your Device Path' # As is, just like your DEVICE_PATH in your BoardConfig.mk
         required: true
-        default: 'device/samsung/a34x'
+        default: 'device/samsung/a05m'
       DEVICE_NAME:
         description: 'Specify your Device Codename' # As is, just like your PRODUCT_DEVICE in your device tree.
         required: true
-        default: 'a34x'
+        default: 'a05m'
       BUILD_TARGET:
         description: 'Specify your Build Target' # Pick among boot, recovery and vendor_boot
         required: true
@@ -103,14 +103,14 @@ jobs:
       run: |
         mkdir android-recovery
         cd android-recovery
-        git config --global user.name "${{ github.actor }}"
-        git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-        repo init --depth=1 -u ${{ steps.manifest.outputs.value }} -b ${{ inputs.MANIFEST_BRANCH }}
+        git config --global user.name "rsuntk"
+        git config --global user.email "noreply@github.com"
+        repo init --depth=1 --no-repo-verify -u ${{ steps.manifest.outputs.value }} -b ${{ inputs.MANIFEST_BRANCH }} -g default,-mips,-darwin,-notdefault
         
     - name: Repo Sync
       run: |
         cd android-recovery
-        repo sync -j$(nproc --all) --force-sync
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j$(nproc --all)
       
     - name: Clone Device Tree
       run: |
@@ -124,8 +124,6 @@ jobs:
         cd android-recovery
         if [ -f ${{ inputs.DEVICE_PATH }}/twrp_${{ inputs.DEVICE_NAME}}.mk ]; then
             echo "DEVICE_MAKEFILE=twrp_${{ inputs.DEVICE_NAME }}" >> $GITHUB_ENV
-        elif [ -f ${{ inputs.DEVICE_PATH }}/omni_${{ inputs.DEVICE_NAME}}.mk ]; then
-            echo "DEVICE_MAKEFILE=omni_${{ inputs.DEVICE_NAME }}" >> $GITHUB_ENV
         else
             echo "No recovery makefile file found!"
         fi
@@ -136,7 +134,7 @@ jobs:
         cd android-recovery
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
-        lunch ${{ env.DEVICE_MAKEFILE }}-bp2a-eng && make clean && make ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
+        lunch ${{ env.DEVICE_MAKEFILE }}-bp2a-eng; mka ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
         echo "Done building your ${{ inputs.BUILD_TARGET }}.img"
       
     - name: Set Other Build Properties # Output will be use in Release
@@ -186,10 +184,21 @@ jobs:
 
     - name: Run LDCheck
       run: |
-        cd tools
-        mv -n libneeds ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/
-        mv -n ldcheck ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/
-        cd ../android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root
-        python3 ldcheck/ldcheck -p $OUT/recovery/root/system/lib64:$OUT/recovery/root/system/lib64/hw:$OUT/recovery/root/vendor/lib64:$OUT/recovery/root/vendor/lib64/hw -d $OUT/recovery/root/vendor/bin/*; python3 ldcheck/ldcheck -p $OUT/recovery/root/system/lib64:$OUT/recovery/root/system/lib64/hw:$OUT/recovery/root/vendor/lib64:$OUT/recovery/root/vendor/lib64/hw -d $OUT/recovery/root/vendor/bin/hw/*; python3 ldcheck/ldcheck -p $OUT/recovery/root/system/lib64:$OUT/recovery/root/system/lib64/hw:$OUT/recovery/root/vendor/lib64:$OUT/recovery/root/vendor/lib64/hw -d $OUT/recovery/root/vendor/lib64/*; python3 ldcheck/ldcheck -p $OUT/recovery/root/system/lib64:$OUT/recovery/root/system/lib64/hw:$OUT/recovery/root/vendor/lib64:$OUT/recovery/root/vendor/lib64/hw -d $OUT/recovery/root/system//bin/*
+        ROOT_DIR="$GITHUB_WORKSPACE"
+        OUT="$ROOT_DIR/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}"
+        TARGET_ROOT="$OUT/recovery/root"
+
+        cp "$ROOT_DIR/tools/libneeds" "$TARGET_ROOT/"
+        cp "$ROOT_DIR/tools/ldcheck" "$TARGET_ROOT/"
+
+        cd "$TARGET_ROOT"
+
+        LIB_PATH="system/lib64:system/lib64/hw:vendor/lib64:vendor/lib64/hw"
+
+        if compgen -G "vendor/bin/*" > /dev/null; then python3 ldcheck -p "$LIB_PATH" -d vendor/bin/*; fi
+        if compgen -G "vendor/bin/hw/*" > /dev/null; then python3 ldcheck -p "$LIB_PATH" -d vendor/bin/hw/*; fi
+        if compgen -G "vendor/lib64/*" > /dev/null; then python3 ldcheck -p "$LIB_PATH" -d vendor/lib64/*; fi
+        if compgen -G "system/bin/*" > /dev/null; then python3 ldcheck -p "$LIB_PATH" -d system/bin/*; fi
+        
         echo "Done checking missing dependencies. Review, and reconfigure your tree."
       continue-on-error: true
