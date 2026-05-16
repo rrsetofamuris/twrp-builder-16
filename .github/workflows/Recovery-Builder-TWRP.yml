@@ -110,7 +110,7 @@ jobs:
     - name: Repo Sync
       run: |
         cd android-recovery
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j$(nproc --all)
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j8
       
     - name: Clone Device Tree
       run: |
